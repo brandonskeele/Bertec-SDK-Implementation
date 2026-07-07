@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "xo_sole_windows_bertec.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,6 +26,12 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  // Register the custom Bertec integration and route its EventChannel emissions
+  // through this window's message pump (see MessageHandler below).
+  XoSoleWindowsBertecRegister(flutter_controller_->engine()->messenger());
+  XoSoleWindowsBertecSetTargetWindow(GetHandle());
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -59,6 +66,11 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     if (result) {
       return *result;
     }
+  }
+
+  // Drain queued Bertec events on the platform thread.
+  if (XoSoleWindowsBertecHandleMessage(message)) {
+    return 0;
   }
 
   switch (message) {

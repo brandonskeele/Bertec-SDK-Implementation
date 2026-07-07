@@ -11,6 +11,7 @@ add_executable(${BINARY_NAME} WIN32
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"
+  "xo_sole_windows_bertec.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"
   "runner.exe.manifest"
@@ -35,6 +36,19 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
+
+# Bertec SDK, used directly by the xo_sole native implementation in the runner.
+set(BERTEC_SDK_ROOT "${CMAKE_SOURCE_DIR}/../Bertec_Device_SDK_March_2026")
+target_include_directories(${BINARY_NAME} PRIVATE "${BERTEC_SDK_ROOT}")
+target_link_libraries(${BINARY_NAME} PRIVATE "${BERTEC_SDK_ROOT}/x64/BertecDevice.lib")
+# SHGetKnownFolderPath / CoTaskMemFree used by the recording/diagnostic logging.
+target_link_libraries(${BINARY_NAME} PRIVATE "Shell32.lib" "Ole32.lib")
+
+# The xo_sole integration pulls in filesystem/thread/fstream STL and includes the
+# vendor SDK header; keep its warnings from failing the runner's /WX build without
+# relaxing the strict settings applied to the rest of the runner sources.
+set_source_files_properties("xo_sole_windows_bertec.cpp" PROPERTIES
+  COMPILE_OPTIONS "/WX-")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)

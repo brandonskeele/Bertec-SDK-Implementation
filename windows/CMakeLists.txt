@@ -52,6 +52,45 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+# === Bertec Device SDK bridge ===
+# A small shared library that reproduces the vendor example programs' SDK usage
+# and exposes a pollable C API for the Dart FFI layer. It is intentionally kept
+# off APPLY_STANDARD_SETTINGS: the vendor SDK header is not /WX clean and the
+# bridge relies on C++ exceptions (std::deque), which the runner disables.
+set(BERTEC_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../Bertec_Device_SDK_March_2026")
+set(BERTEC_SDK_X64_DIR "${BERTEC_SDK_DIR}/x64")
+
+# Emit the bridge DLL straight into the runner's output directory so it sits
+# next to the executable. A literal path is used (rather than
+# $<TARGET_FILE_DIR:${BINARY_NAME}>) to avoid a target-dependency cycle between
+# the runner and the bridge.
+set(RUNNER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/runner/$<CONFIG>")
+
+add_library(bertec_bridge SHARED
+  "bertec/bertec_bridge.cpp"
+)
+target_compile_features(bertec_bridge PUBLIC cxx_std_17)
+target_compile_options(bertec_bridge PRIVATE /W3 /EHsc)
+target_include_directories(bertec_bridge PRIVATE
+  "${BERTEC_SDK_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/bertec"
+)
+target_link_libraries(bertec_bridge PRIVATE "${BERTEC_SDK_X64_DIR}/BertecDevice.lib")
+set_target_properties(bertec_bridge PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${RUNNER_OUTPUT_DIR}")
+
+# Ensure the bridge is built with the app, and copy the SDK runtime DLLs next to
+# the executable so both `flutter run` and Visual Studio launches work.
+add_dependencies(${BINARY_NAME} bertec_bridge)
+add_custom_command(TARGET bertec_bridge POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${RUNNER_OUTPUT_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${BERTEC_SDK_X64_DIR}/BertecDevice.dll" "${RUNNER_OUTPUT_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${BERTEC_SDK_X64_DIR}/ftd2xx.dll" "${RUNNER_OUTPUT_DIR}"
+  VERBATIM
+)
+
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
@@ -105,4 +144,12 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
+  COMPONENT Runtime)
+
+# Bundle the Bertec bridge and SDK runtime DLLs next to the executable.
+install(FILES
+  "$<TARGET_FILE:bertec_bridge>"
+  "${BERTEC_SDK_X64_DIR}/BertecDevice.dll"
+  "${BERTEC_SDK_X64_DIR}/ftd2xx.dll"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
