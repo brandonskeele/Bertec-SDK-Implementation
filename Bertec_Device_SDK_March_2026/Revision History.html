@@ -1,0 +1,818 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<title>Updates</title>
+<style type="text/css">
+   body
+   {
+      background-color: #ffffff;
+      font-family: Verdana, Arial, Helvetica, sans-serif;
+      font-size: 12pt;
+   }
+
+   ul
+   {
+      font-weight: bold;
+      margin-bottom: 2.6em;
+   }
+
+   li
+   {
+      font-weight: normal;
+      margin-top: .6em;
+   }
+	
+	br
+	{
+	  margin-bottom:.5em;
+	}
+</style>
+</head>
+<body>
+<h2>Bertec Device DLL revision history.</h2>
+<h2>Current version: 2.56</h2>
+
+
+<ul>
+   Changes since September 24, 2025 to March 4, 2026 - build 1033:
+	<li>
+	More robust device detection and fallback modes for when hardware configurations block certain usage patterns, causing devices to randomly not appear. This is most common on modern systems with enhanced security roles in place. This also addresses an issue were late-plugging or forcing redetection of the devices after the SDK has been started could cause the devices to not be fully detected.
+	</li>
+	<li>
+	Additional error checking and memory validation to prevent possible misuse of buffers and data structures. SDK init and shutdown should be faster, with a reduction in shutdown (app exit) stalls.
+	</li>
+	<li>
+	Continual optimization improvements to reduce cpu overhead and slightly lower memory consumption.
+	</li>
+	<li>
+	PDF/header documentation updated to reflect the use of the preferred EXTUNCONTROLLED sync mode (ie: no quiet period mode).
+	</li>
+</ul>
+
+<ul>
+   Changes since September 9, 2024 to September 24, 2025 - build 992:
+	<li>
+		Targeted performance improvements and memory enhancements for improved CPU resource usage. These changes improve the overall latency between reading the plate data and delivering it to your application.
+	</li>
+	<li>
+	   Certain control functions are now explicitly blocked during data/status callbacks (for example, shutting down the library, restarting the data stream, or manipulating the polling data buffer). These should not have been called in the first place at these points, but are now checked and prevented to avoid application crashes. <b>Of particular note, your Status callbacks must not invoke Start Data Stream and should instead trigger a function inside your own application's thread model.</b> Calling these functions or methods from inside an active callback (data, status, or otherwise) will return a BERTEC_FUNCTION_BUSY error. The example code has been updated to reflect this change.
+	</li>
+	<li>
+	   The data and event handlers now checks your application code turnaround time and logs a message if this appears to be taking too long. As a rule, your bertec_DataStreamCallback (C/C++) or BertecDevice.OnDataStream (C#) handler must process or cache the data frame and return in under 1ms or otherwise you will run the risk of losing data. Note that this turnaround time must also apply to bertec_StatusCallback (C/C++) and BertecDevice.OnStatus (C#) for the same reason.
+	</li>
+	<li>
+	   Device detection is now faster in most cases, particularly for systems with unusual USB chipsets that can cause detection timeout issues. Note that this change does not resolve all such issues in all cases, such as where the USB devices randomly vanish from Windows Device Manager. For such issues we recommend contacting Bertec Customer Success (support@bertec.com) for possible hardware changes that may help.
+	</li>
+	<li>
+	   Random hardware specific exceptions at program termination resolved.
+	</li>
+	<li>
+	   bertec_GetCoveringThickness (C/C++) and BertecDevice.CoveringThickness (C#) now return the input value instead of a scaler.
+	</li>
+	<li>
+		Example code now checks the status of the Start Data Stream instead of blindly assuming it worked.
+	</li>
+	<li>
+	   Logging output now flushes the buffer at exit better, resulting in less missing messages at program termination (common with heavily loaded systems/applications).
+	</li>
+	<li>
+	   Removed some noisy logging outputs that were of little use for most applications.
+	</li>
+	<li>
+	   The logging output will now suppress duplicate runs of messages and instead batch them up. This helps with very noisy logging output and reduces the logfile size.
+	</li>
+	<li>
+		bertec_DeviceSortCallback (C/C++) and BertecDevice.OnDeviceSort (C#) now check the adjusted results to prevent out of range or duplicate index values.
+	</li>
+	<li>
+		Added bertec_SetDeviceLogEnable (C/C++) and BertecDevice.SetDeviceLogEnable (C#) to turn on/off logging to the bertec-device-log folder. Your logging callbacks/events will still work, just that no file will be written. Still defaults to ON.
+	</li>
+	<li>
+	   The bertec_RegisterPinStateChangeCallback/bertec_UnregisterPinStateChangeCallback and C# SetPinStateChangeNotification/ClearPinStateChangeNotification functions no longer take a Device Index parameter since these are treated as global notifications and the callback/event itself is passed the device index value.
+	</li>
+</ul>
+
+<ul>
+   Changes since June 11, 2024 to September 9, 2024 - build 984:
+	<li>
+		The SDK library will now check the running CPU and will no longer allow attempts to use it with non-conforming CPU models.<br>
+		For the 64 bit version of the library, the minimum supported CPU is one that utilizes the AVX2 instruction extensions (this includes all modern Intel-compatible CPUs made in the last 10+ years);<br>
+		For the 32 bit version, this minimum supported CPU institution set is SSE2.<br>
+		If the run-time CPU is determined that it does not support the minimum requirements, the bertec_Init call will return a null handle pointer and a message will be logged to the debug window. For the .NET interface, a FileNotFoundException will be thrown.
+	</li>
+	<li>
+		Calibration configuration data parsing is now more lenient on certain legacy configurations.
+	</li>
+	<li>
+		Added Stream Starting/Success/Failure signaling to the bertec_StatusErrors enum that are sent through Status Callback handler. These values can be used to monitor the Data Stream start process to handle success/failure modes.
+	</li>
+	<li>
+		Shutdown handling in the .NET interface should no longer throw exceptions when the underlying FTDI driver refuses to disengage.
+	</li>
+	<li>
+		The bertec_ChangeMaxBufferedDataSize (.NET: MaxBufferedDataSize) now has a limit of approximately 67 million frames of data, up from 60000. This change was made to support systems that are using high-frequency or variable sync line inputs that could exhaust the previously max 60000 limit (which would be 1 minutes worth of data at 1000hz). As before, allocating larger buffers will take increasingly larger amounts of memory.<br>
+		Special note: the buffer data size is a direct count of the # of data frames, not the count divided by size of the bertec_DataFrame and # of devices.
+	</li>
+	<li>
+		Added the function bertec_GetLastBufferedFrameCounterValue (.NET: LastBufferedFrameCounterValue) that returns the last (not the first/next) available AdditionalData.frameCounter in the buffered data that is waiting to be sent via callback or read by polling. If there is none ready, returns 0.<br>
+		As a reminder, the frameCounter is a monotonically incremented value on the PC side, and does not come from the hardware, unlike both the timestamp
+		and eventCounter values.<br>
+		Special note: calling this method during your data callback may return zero even when there is data being sent your callback; this is because
+		when the callback is invoked, data is exchanged between the reading and calling logic. If, during a callback, you get a non-zero value this indicates there	is possibly data piling up in the reading loop while your callback is handling data. It is not uncommon to have this be +1 ahead of the current
+		callback's frameCounter value, but sigifinatly larger numbers should have you examine your data processing or other setups.<br>
+		See also bertec_GetBufferedDataAvailable / BufferedDataAvailable.
+	</li>
+</ul>
+
+<ul>
+   Changes since May 21, 2024 to June 11, 2024 - build 955:
+	<li>
+		Device detection and setup has been improved; device detection failures should now occur less often.
+	</li>
+	<li>
+		When calling StartDataStream or StartDataStreamAsync, we recommend always checking the return values to determine if the desired mode has been reached. We also recommend first calling CanStartDataStream to pre-flight your input values. This can be used, for example, to determine if the devices you are connected to are actually capable of the desired streaming mode. If you are certain the devices can be used in that mode, you can assume the device detection was not successful and call RedetectDevices to start over.
+	</li>
+	<li>
+		When using multiple non-hardware-sync plates not connected by the SYNC line (for example, classic USB portable plates), we recommend calling bertec_ClearBufferedData or ClearBufferedData when starting a new data recording session in order to bring the plates closer in terms of recorded data. This is because of slight timing differences between the plates causing the two data streams to drift apart over long periods of time.
+	</li>
+</ul>
+
+<ul>
+   Changes since January 12, 2024 to May 21, 2024 - build 942:
+	<li>
+		The DLL now supports a 'covering thickness' setting that can be set by either the bertec_SetCoveringThickness function (C/C++) or the .NET BertecDevice.CoveringThickness property. The thickness value controls offsetting the Mx/My values, which in turn impacts the CopX/Y values. Please refer to the PDF documentation on how to use this feature and the hardware requirements needed.
+	</li>
+	<li>
+		The status enum values have been updated with new values, which can be used to deliver finer-grained UI progress displays and/or logging.
+	</li>
+	<li>
+		Overall performance and memory enhancements that result in the DLL taking less CPU time and memory. Startup and device detection should be slightly faster, scaling with the # of available CPU cores.
+	</li>
+</ul>
+
+<ul>
+   Changes since December 6, 2023 to January 12, 2024	- build 913:
+	<li>
+		Systems with extremely large device counts (60+) should now handle the devices better, especially on initial startup and configuration.
+	</li>
+	<li>
+		Your application design for handling the callback data <i>must</i> handle the data and return in 1ms or less, or else you will run into issues with data loss.<br>
+		This kind of issue can easily occur with large device counts; if you can, avoid direct disk writes and instead buffer data to memory.<br>
+		The BertecExample C++ code has been updated to reflect this in one possible manner, but your hardware/software design may dictate a different solution.
+	</li>
+	<li>
+		Updates/extensions to the status enum values are currently being implemented, allowing for better UI display of the initial startup states.
+	</li>
+</ul>
+
+<ul>
+   Changes since September 20, 2023 to December 6, 2023 - build 899:
+	<li>
+		Device detection and initialization times have been improved, particularly for the case with 6500/6800 amplifiers with the external device disconnected. In this case, the device will be skipped until the device is fully connected and recognized by the amplifier, and the SDK is restarted or the Redetect function is called.
+	</li>
+	<li>
+		Shutting the SDK down in the middle of device detection should be handled faster, and no longer leaks memory.
+	</li>
+	<li>
+		The Autozeroing setting is now retained between Start Data Stream calls; previously, this would have been reset to Autozero Off.
+	</li>
+	<li>
+		Additional errors codes were added to the StartDataStream return; these can be used to indicate if the problem is the sync line not 'quiet' (BERTEC_STREAM_SYNC_NOT_STABLE) or the connected cable has possible noise issues (BERTEC_STREAM_SYNC_COUNT_OFF), etc.
+	</li>
+	<li>
+		GetDataRateResampling API function has been added to match SetDataRateResampling.
+	</li>
+	<li>
+		The SYNC and AUX lines are now returned to a LOW state when bertec_Close is called (or the .NET class is unloaded), which should help with some 3rd party hardware devices.
+	</li>
+	<li>
+		The SYNC and AUX lines now get reset to a LOW state when bertec_Close is called (or the .NET class is unloaded).
+	</li>
+	<li>
+		Hardware capability detection has been improved, particularly relating to SYNC and AUX line support.
+	</li>
+	<li>
+		Examples updated.
+	</li>
+</ul>
+
+<ul>
+   Changes since April 20, 2023 to September 20, 2023 - build 873:
+	<li>
+      The SDK's overall performance and memory consumption has been improved: memory overhead has been reduced by at least 128k per device and data frames should now be less 'bursty' when they are delivered to your application. These changes also improves startup and shutdown performance in multi-device systems, particularly for when the first complete 'frame' of data is seen by the client application. Multiple device systems now start up quicker and no longer delay multiple seconds for large-scale installs.<br>
+		In addition, the SDK can now be quickly shut down in the middle of device redetection and init, instead of blocking for an arbitrary amount of time.
+   </li>
+	<li>
+      Sync initialization steps now do a more robust check on the device capabilities and validation of the incoming data stream, which resolves some semi-random errors where the sync mode could not be started. In addition, data stream syncing will now only engage if all devices support the same level of functionality; previously, attempting to mix-and-match different versions of firmware would result in frequent out-of-sync errors.
+   </li>
+   <li>
+      Additional checking and workarounds for limited support of older legacy hardware and amplifiers; however, be aware that older devices may not fully sync with newer hardware, and there may be intermittent dropped frames when using these older devices without firmware updates, if available.<br>Please note that legacy hardware does not support any of the sync modes, retiming, internal or external clocks, or device timestamps (which affects advanced options such as non-sync TimestampAlignmentMode and related). Customers are encouraged to reach out to Bertec Customer Success (support@bertec.com) for possible upgrade paths.
+   </li>
+   <li>
+      Device initialization now performs additional steps and validations to ensure the hardware capabilities can be fully utilized; this includes additional error logging when unusual conditions are detected for better customer support and diagnostics.
+   </li>
+	<li>
+		StartDataStream now handles the case where devices fail during the initial setup & sync detection phase, and will return BERTEFC_DEVICE_HAS_FAULTED and then starts a redetection step.
+	</li>
+	<li>
+		The TimestampAlignmentMode feature has been removed, since StartDataStream has taken over this functionality.
+	</li>
+	<li>
+		The USB connection logic is now more aggressive with detecting disconnect/cable faults, and will trigger a device redetection if it determines data flow has stopped. Since this feature can be triggered during common debugging steps (pause/step in/step out), you can turn this off in the BertecDeviceSettings.ini file by setting the "[AdvancedSettings]" section value "UsbWatchdogTimeout" to 0. 
+	</li>
+	<li>
+		The SDK Samples (both C and C#) have been updated to take advantage of some new features, with minor code blocks being refactored out to help with understanding of the work flow. The StartDataStream code block now supports multiple retries for cases where the hardware sync input line may be set up late. In addition, the command-line sample has the ability to start an external program for end-user hardware testing or other projects that may need it.
+	</li>
+	<li>
+		Diagnostic files are now correctly written to the %TEMP%/bertec-device-logs folder for usernames containing Unicode characters, instead of silently failing.
+	</li>
+	<li>
+      The FTDI library has been updated to version 2.12.36.4.
+   </li>
+</ul>
+
+<ul>
+   Changes since December 15, 2022 to April 20, 2023 - build 849:
+   <li>
+      Synchronization between multiple devices using the SYNC line connection has been improved.
+   </li>
+	<li>
+      Starting synchronization with external clock sources now accepts either an all-high or all-low 'quiet period' state instead of just all-low.
+   </li>
+	<li>
+      Minor performance improvements have been made to the data collection routines, which will result in slightly less cpu overhead. 
+   </li>
+	<li>
+      Updated the SDK sample code files to better reflect possible use conditions such as rate generation, etc.
+   </li>
+</ul>
+
+<ul>
+   Changes since December 8, 2022 to December 15, 2022 - build 821:
+   <li>
+      bertec_Stop should now complete faster with multi-device setups, and extreme cases of 30+ seconds blocking should now be reduced to less than 5 seconds.
+   </li>
+	<li>
+      Applications that directly use the Windows API function FreeLibrary or cycling LoadLibrary/FreeLibrary aggressively without first calling bertec_Close should no longer randomly crash or block excessively. One particular scenario is when the library is unloaded while the devices are being detected and initialized. Note that using ExitProcess, exit(), or returning from main() without first calling berte_Close can also trigger this condition.<br>
+		This issue does not occur with BertecDeviceNET since its Finalizer explicitly calls bertec_Close.
+   </li>
+	<li>
+      The device detection logic now has a hard limit of 3 seconds for devices to respond; any devices that fail to respond in this time frame will assume to be in a 'hung' state and ignored.
+   </li>
+</ul>
+
+<ul>
+   Changes since August 3, 2022 to December 8, 2022 - build 820:
+   <li>
+      Multiple device detection should now be significantly faster, typically bringing the init time down from 10+ seconds to 2 seconds or less. This becomes important with large-scale deployments where there can be tens of connected devices that all must be detected in a short period of time.
+   </li>
+   <li>
+      Performance improvements to the data reading and processioning, resulting in slightly less memory consumption and cpu/power usage.
+   </li>
+   <li>
+      More checking is now done during the data reading, resulting in better error/disconnection detection.
+   </li>
+   <li>
+      bertec_Status now returns BERTEC_DATA_READ_NOT_STARTED if bertec_Start has not been called or bertec_Close has been called. If bertec_Start has been called, then bertec_Status will return the current status (looking for devices, devices found, autozeroing, etc).
+   </li>
+</ul>
+
+<ul>
+   Changes since April 20, 2021 to August 3, 2022 - build 777:
+   <br style='margin-bottom:1em'><b>
+   NOTICE: The 2.50 version of the SDK introduces a breaking change regarding the 'init' or 'startup' phase of your program. Please see
+   the updated BertecExample.cpp and BertecExampleNET.cs files for examples on the code changes your implementation will need to use.</b>
+   <li>
+      The Device SDK now requires the use of the Data Stream Control system which the caller <b>must</b> use in order to set up how they plan on interacting with
+      the device's data stream. Data Stream Control is provided to allow better, more fine-grained support for the various data alignment/sync modes,
+      including internal and external clock frequencies. Data Stream Control functionality is exposed through the bertec_StartDataStream and
+      bertec_StopDataStream methods (.NET: StartDataStream and StopDataStream), and the SDK PDF docs have been updated to document the various
+      modes Data Stream Control provides.
+      If the connected hardware does not support the requested feature, bertec_StartDataStream/StartDataStream will return an error.<br>
+      This control block is required, and bertec_StartDataStream <b>must</b> be called before any data will be provided to the end consumer;
+      calls to bertec_StartDataStream/StartDataStream should be made after GetStatus returns BERTEC_DEVICES_READY. Calling bertec_StartDataStream
+		prior to a BERTEC_DEVICES_READY will fail to function, and failing to call bertec_StartDataStream will result in no data being processed.<br>
+      You can use bertec_CanStartDataStream to determine if the connected hardware supports the desired Data Stream Control parameter block
+      prior to calling bertec_StartDataStream.<br>
+      See BertecExample.cpp and BertecExampleNET.cs for examples on the needed code changes.
+   </li>
+   <li>
+      bertec_StartDataStreamAsync is also provided as a non-blocking method with a callback function. There is no equivalent .NET function;
+      if your .NET program requires StartDataStreamAsync-like functionality, consider using a thread or concurrent object to make the function
+      call asynchronous.
+   </li>
+   <li>
+      Additional examples in both C++ and C# are now included in the SDK Package to cover the various modes of operation as documented in the
+      SDK PDF file. These examples cover starting and stopping data using the AUX input port, the internal/external clocking modes, and a simple
+      FZ data reader.
+   </li>
+   <li>
+      The bertec_SetEnableMasterSlaveMode/bertec_GetEnableMasterSlaveMode functions have been removed since this functionality is now covered
+      by bertec_StartDataStream.
+   </li>
+   <li>
+      bertec_DeviceTimestampCallback has been removed as this functionality is no longer supported.
+   </li>
+   <li>
+      bertec_SetPinFlowControl/bertec_GetPinFlowControl has been added, which allows you to set the sync/aux pin on/off flow control independently
+		of the data stream setup function.
+   </li>
+   <li>
+      An advanced feature bertec_PinStateChangeCallback has been added, which allows your code to be triggered whenever the value of the selected
+      IOPins enum on a given device changes value. This can be called up to 8000mhz vs the 1000mhz data rate, since the sync and aux pins are sampled
+      at 8x the hardware frequency, and operates outside the context of internal or external clock signaling.<br>
+      The .NET library has the equivalent SetPinStateChangeNotification + PinStateChangedHandler event.
+   </li>
+   <li>
+      bertec_SetAggregateDeviceMode no longer takes a flag but now an enum value which allows for different physical arrangement of devices.
+   </li>
+   <li>
+      bertec_SetSubjectHeight, which is used to compute the Sway Angle for USB Force Plates, now enforces a lower limit of 1000mm and an upper
+      limit of 2700mm. This prevents erroneous sway angle values when the height is impossible for the measured force data.
+   </li>
+   <li>
+      The hard limit of 32 devices has been removed, and the SDK can now support up to as many USB devices as Windows allows.
+   </li>
+   <li>
+      Data alignment between devices now will backfill missing data when it appears there is a mismatch between devices, which works better
+      at keeping multiple devices in sync even without a connected sync cable.
+   </li>
+   <li>
+      The USB devices now handle device buffering in a non-blocking manner which improves the data alignment of multiple devices. This applies
+      to various data structures and callback handlers, which should improve responsiveness in several areas.
+   </li>
+   <li>
+      The DeviceData::sequence member has been renamed to DeviceData::frameCounter, and
+      DeviceInfo::hasInternalClock has been renamed to DeviceInfo::has64BitTimestamp to better match what how they are used.
+   </li>
+   <li>
+      The bertec_ResetDeviceClock, bertec_ResetAllDeviceClocks, bertec_ResetDeviceClockAtTime, and bertec_ResetAllDeviceClocksAtTime have all
+      been renamed to bertec_ResetDeviceTimestamp, bertec_ResetAllDeviceTimestamps, bertec_ResetDeviceTimestampAtMark, and bertec_ResetAllDeviceTimestampsAtMark
+      to better reflect that they are actually doing in regards to the hardware devices.
+   </li>
+   <li>
+      The Device Hardware ID enum has been updated with all currently available Bertec devices.
+   </li>
+   <li>
+      Corrected the naming of the SyncPinMode enums, and removed redundant prefixes for the .NET enums. This may introduce compilation errors
+      in .NET code until the usage points are cleaned up.
+   </li>
+   <li>
+      A potential deadlock that could occur in user code where SDK functions were being invoked during a callback (ex: bertec_StatusCallback)
+      has been resolved.
+   </li>
+   <li>
+      A random ~100ms delay during device setup has been resolved and devices should now initialize faster and align their clock frequencies better.
+   </li>
+   <li>
+      Devices without configured serial numbers (common for Treadmill systems) now default to the hardware id, and serial numbers now have
+      leading/trailing whitespace removed. 
+   </li>
+   <li>
+      Additional diagnostic logging is now being collected into the bertec_device_log file.
+   </li>
+   <li>
+      The .NET interface now does a better job of avoiding memory "churn", which should improve GC hits.
+   </li>
+</ul>
+
+<ul>
+   Changes since December 23, 2020 to April 20, 2021 - build 697:
+   <li>
+      A potential race condition with the USB connection has been addressed.
+   </li>
+   <li>
+      When multiple devices are connected, the SDK now makes a greater effort to start them all at the same time. This should help to resolve some out-of-step data issues where one device would be 1 or 2 milliseconds 'ahead' of the other one.
+   </li>
+     <li>
+      The timing of multiple device data streams and command handling has been improved. Both the incoming data and outgoing commands (ex: ZeroNow) should now exhibit tighter interleaving under typical workloads.
+   </li>
+   <li>
+      The SDK now provides a optional separate data callback/.NET event that is invoked on a per-device basis instead of all at once. See bertec_ImmediateDeviceDataCallback in the .h file and the documentation for more information.
+   </li>
+   <li>
+      The bertec_DeviceTimestampCallback callback interface has been updated to match the other callback method patterns.
+   </li>
+   <li>
+      The SDK now supports sync and aux output pin frequency generation on hardware that allows it. See bertec_SetFrequencyGeneration in the .h file and the documentation for more information.
+   </li>
+   <li>
+      API header verbiage updated to more accurately reflect functionality.
+   </li>
+   <li>
+      Enum status values involving missing data sequence and sync loss have been removed, since this functionality has been replaced and these values have not been used for several major releases. 
+   </li>
+   <li>
+      Handling of the FTD2XX.DLL has been improved - deploying this file in the same folder as your application's EXE is no longer needed. If you are loading the BertecDevice.DLL from a sub-folder (ex: Foo/Bar), you can place the FTD2XX.DLL in that same folder or your EXE's folder. If your current deployment strategy is to place the FTD2XX.DLL and BertecDevice.DLL files in your EXE's folder, that will continue to work. This is primarily to help with the .NET interface library.
+   </li>
+</ul>
+
+<ul>
+   Changes since June 8, 2020 to December 23, 2020 - build 670:
+   <li>
+      The SDK now has preliminary support for frequency generation on the sync and aux pins via bertec_SetFrequencyGeneration.
+      This is dependent on the firmware version loaded into the amplifier.
+   </li>
+   <li>
+      The SDK now supports additional sync and aux pin modes, and supports channel 7 and channel 8 pin modes on 68xx series amplifiers.
+      This is dependent on the firmware version loaded into the amplifier.
+   </li>
+   <li>
+      Added the enums bertec_IOPins and bertec_PinModes, along with bertec_SetPinMode to support the new pin mode functionality.
+   </li>
+   <li>
+      Performance improvements and additional error logging.
+   </li>
+</ul>
+
+<ul>
+   Changes since November 8, 2019 to June 8, 2020 - build 662:
+   <li>
+	  Both the C++ and C# example files (the BertecExample command line programs) have been updated to document how to use the AUX channel as a simple on/off data capture switch, along with the Data Rate Resampling feature. Additional comments to the example code have been added, and existing comments have been improved.
+   </li>
+   <li>
+	  Additional example files for C++ and C# are now part of the SDK package. These examples show how to use the Status callback or event handler to detect when devices are connected, and turn on/off a "can read data" flag. The device channel names are read to find the index to the "FZ" channel, which the Data callback/event handler uses to display the real-time FZ channel value. This example can serve as a jumping-off point for your own application.
+   </li>
+   <li>
+	  Additional error checking has been added to the device initialization phase to detect possible connection issues.
+   </li>
+   <li>
+	  The Library now supports the latest hardware and firmware revisions.
+   </li>
+   <li>
+	  Functionality to turn on and off the timestamp alignment for multiple devices has been added. By default, the SDK will not attempt to align the data but if users wish to enable this feature, they can use bertec_SetTimestampAlignmentMode or the corresponding .NET property BertecDevice.TimestampAlignmentMode.
+   </li>
+   <li>
+      The ability to change the resampling rate of the incoming data has been exposed by the bertec_SetDataRateResampling and BertecDevice.SetDataRateResampling functions. This is a per-device method, and can be used with hardware that does not support external clocking.
+   </li>
+   <li>
+	  The bertec_DataFrame pointer in the bertec_DataCallback handler has been marked as 'const', to indicate the application should not manipulate the passed data. The user void pointer is still non-const, as it is under the control of the application's memory space.
+   </li>
+   <li>
+      bertec_AdditionalData.auxData and bertec_AdditionalData.syncData now track the external clock pulse if one of the three external
+	  bertec_ClockSourceFlags enum values are passed to bertec_SetExternalClockMode. Previously, these were in an undefined state when an external
+	  clock source was being used (ex: calling bertec_SetExternalClockMode with CLOCK_SOURCE_EXT_RISE).
+	  When external clocking is being used (that is, data is only delivered when a high-low edge is detected on the Sync pin), the auxData
+	  value is either 0 or 255 (false/true) depending on the sampled state of the AUX pin at the point. The syncData value will be either 0 or 255
+	  depending on which edge transition is being detected (0 for CLOCK_SOURCE_EXT_FALL, 255 for CLOCK_SOURCE_EXT_RISE, and cycling between 0/255
+	  for CLOCK_SOURCE_EXT_BOTH). If the bertec_SetExternalClockMode is set to CLOCK_SOURCE_INTERNAL, then both the auxData and syncData will
+	  continue to be the same 8-bit sampled pattern from these hardware pins.
+   </li>
+   <li>
+      The SDK now does a better job in tracking and handling dropped input data, notably when using the external clock modes.
+   </li>
+   <li>
+      Both low pass filtering (bertec_SetLowpassFiltering) and averaging (bertec_SetAveraging) options now work with external clock sources
+	  (bertec_SetExternalClockMode), applying either or both of these two filters to the under or overclocked data. If external clocking is not
+	  turned on (bertec_ClockSourceFlags::CLOCK_SOURCE_INTERNAL), then these two filters behave as before.
+   </li>
+   <li>
+	  The device info functions (bertec_GetDeviceCount, bertec_GetDeviceInfo, bertec_GetDeviceSerialNumber, bertec_GetDeviceModelNumber,
+	  bertec_GetDeviceChannels, bertec_GetDeviceChannelCount and bertec_GetDeviceChannelName) no longer block, resolving some deadlock issues that
+	  could occur inside user code.
+   </li>
+   <li>
+	  The bertec_DeviceInfo structure now includes a Hardware ID field (hwid) that exposes the bertec_HardwareIDs enum value determined from
+	  device discovery and initialization. These hardware device enum values can be used by your code for advanced setup or detection functionality.
+   </li>
+   <li>
+	  The version fields in the bertec_DeviceInfo structure have been renamed to better match what they are and how they should be used.
+	  These fields now encapsulate the device's firmware version and communication protocol.
+   </li>
+   <li>
+	  The bertec_SyncModeFlags::SYNC_IN_STROBED value has been removed and will generate an error if used.
+   </li>
+   <li>
+	  bertec_AllocateReadBufferedData now properly sets the output size value to the computed buffer size; this is designed to be used by
+	  bertec_ReadBufferedData.
+   </li>
+   <li>
+	  bertec_AllocateReadBufferedDataForCount has been added, to preallocate a buffer for a given number of devices instead of relying on the
+	  current device count.
+   </li>
+   <li>
+      The bertec_DeviceDataRate function now takes a device index. Each connected device maintains their own effective data rate, which can be
+	  affected by the external clock signal. This computed data rate is updated every 2 seconds, and is designed primarily as a user interface
+	  monitoring device. Note that this is not the same as the Resampling Rate, which is separate.
+   </li>
+   <li>
+	  bertec_GetDeviceChannels and bertec_GetDeviceChannelName now behave in a manner consistent with the other methods, returning an error if the
+	  buffers are not set properly.
+   </li>
+   <li>
+	  The .NET interface has been improved so that using the ReadBufferedData, ReadBufferedDataChannelsOnly, and ReadBufferedDataChannelsOnlyByRef
+	  functions work with multiple devices better.
+   </li>
+</ul>
+
+<ul>
+   Changes since October 11, 2019 to November 7, 2019 - build 651:
+   <li>
+	  During the device initialization phase, the SDK now does a more detailed check of the data coming back from the device. If the device data
+	  is incorrect in any fashion, the initialization sequence is retried. This helps to resolve a random issue with the force channel matrix
+	  computation data not being received in full from the device, resulting in missing channels or invalid force values being reported.
+   </li>
+   <li>
+      The Low Pass Filtering input was incorrectly limited to 19 instead of 20 as per the documentation.
+   </li>
+   <li>
+	  A rare deadlock that could occur when calling some functions has been resolved.
+   </li>
+   <li>
+	  Additional diagnostic logging has been added to the %temp%/bertec-device-logs files, including incorrect read events, zeroing command attempts,
+	  and overall timing.
+   </li>
+   <li>
+	  Where possible, memory now allocates on appropriate architecture boundaries, improving performance.</li>
+   </li>
+   <li>
+	  Startup time for most devices has been improved. You should now see single-plate systems begin to deliver data via bertec_Callback within
+	  300ms of bertec_Start being called.
+   </li>
+   <li>
+	  The SDK example code has been updated to show more of what is going on during the initialization phase.
+   </li>
+</ul>
+
+<ul>
+   Changes since September 3, 2019 to October 11, 2019 - build 650:
+   <li>
+      The SDK now supports an explicit "don't sync" mode via the bertec_SetUnifiedDataMode function. Only use this if your application requires
+	  it and your intend to handle the data alignment yourself.   
+   </li>
+   <li>
+	  Added a helper function bertec_GetDeviceChannelCount that returns the channel count value from the the device info structure.
+   </li>
+   <li>
+	  Added a helper functions bertec_AllocateReadBufferedData and bertec_FreeAllocatedReadBufferedData for applications that wish to use
+	  the data polling. These functions allocate a properly sized buffer that your polling logic can then use.
+   </li>
+   <li>
+	  Performance improvement to the data wait states so that the SDK is slightly more responsive to data arriving on the USB port,
+	  requests to exit, and requests to rescan the USB devices.
+   </li>
+</ul>
+
+<ul>
+   Changes since July 19, 2019 to September 3, 2019 - build 649:
+   <li>
+      A crash that could occur with more than four devices has been resolved.
+   </li>
+   <li>
+      Older firmware would sometimes send extra data, resulting in data packets being rejected without first being processed.
+      The SDK now performs introspection on these packets, rejecting only those that actually are corrupt.
+   </li>
+   <li>
+      SetSyncPinMode and related functions now allow certain values depending on the firmware version, and also check if the firmware
+      being used allows the command to be issued while data is being read instead of blindly allowing it. This resolves a problem with
+      older firmware data collection stopping when sync pin modes are used after data reading has started, and also allows the Master/Slave
+      modes to work with both older and newer firmware.
+   </li>
+   <li>
+      The sync pin is now set to NONE when the device is initialized and before data reading is started.
+   </li>
+   <li>
+      Startup time has been improved, particularly with multiple devices.
+   </li>
+   <li>
+      The detected hardware device id is now exposed in the bertec_HardwareIDs and logged in the cyclic log file. These are currently not exposed
+      in the bertec_DeviceInfo structure to maintain backwards compatibility.
+   </li>
+   <li>
+      A race condition between initializing the devices and returning the list of devices was resolved; this could be triggered by polling the
+      device info array while the device list was being built.
+   </li>
+</ul>
+
+
+<ul>
+   Changes since March 13, 2019 to July 19, 2019 - build 648:
+   <li>
+      The bertec_Start and bertec_Stop functions and corresponding BertecDevice.Start() and BertecDevice.Stop() methods now guard against rapid cycling,
+	  and will monitor and reject attempts to call Stop in the middle of a startup sequence and vice versa. This allows for more aggressive starting and
+	  stopping of the SDK without resorting to manually unloading and reloading the DLL.
+   </li>
+   <li>
+      The changes in build #644 to the .NET library BertecDevice.Start() and BertecDevice.Stop() methods have been removed, and they now work as
+	  before and are just thin calls to the base SDK. These methods now return a BertecDeviceNET.StatusErrors enum and not an int;
+	  your code may need adjusted.
+   </li>
+   <li>
+	  Added additional error codes that Start and Stop will return indicating possible conditions; if your implementation cycles start and stop,
+	  you should check these values and react appropriately.
+   </li>
+   <li>
+	  The stop function will now completely tear down the USB interface instead of leaving it for later when the DLL is unloaded or device redetection
+	  is triggered.
+   </li>
+   <li>
+	  Triggering a device redetection now clears any buffered data first instead of later. Calling stop by design has always done the same by simply
+	  tearing down the USB reading subsystem.
+   </li>
+   <li>
+	  The .NET library version now keeps in step with the base SDK DLL, removing a point of confusion when matching two DLL versions together.
+   </li>
+</ul>
+
+<ul>
+   Changes since January 30, 2019 to March 13, 2019 - build 644:
+   <li>
+      Added in a redetect connected devices function that triggers an internal event to force the SDK to rescan and reinit all of the devices.
+      This is the same as physically unplugging and then replugging all devices from the USB connection at the same time, and should be used
+      in place of continually cycling the bertec_Stop and bertec_Start functions.
+   </li>
+   <li>
+      Added a new BERTEC_LOOKING_FOR_DEVICES enum for when devices are being detected; this will occur as part of the normal cycle and will
+      be followed by either  BERTEC_NO_DEVICES_FOUND or BERTEC_DEVICES_READY.
+   </li>
+   <li>
+      Changed how the .NET library BertecDevice.Start() and BertecDevice.Stop() work. These no longer map directly to bertec_Start and bertec_Stop,
+      and instead set an internal flag that blocks any data from being processed and events being triggered.
+   </li>
+</ul>
+
+<ul>
+   Changes since October 15, 2018 to January 30, 2019 - build 633:
+   <li>
+     Added in a callback function that SDK consumers can be used to manipulate the timestamp values in the datablock when it is being read from the USB.
+     This is advanced functionality and should only be used with caution. See the bertec_DeviceTimestampCallback function signature for more information.
+   </li>
+</ul>
+
+<ul>
+   Changes since May 19, 2018 to October 15, 2018 - build 622:
+   <li>
+      Fixed a possible race condition where the device count being presented to the SDK consumer would be valid before the device info was fully populated.
+   </li>
+   <li>
+      The SDK no longer supports multiple data or event callsbacks; if your project requires such functionality you will need to implicit it yourself.
+   </li>
+   <li>
+      The function signature for bertec_GetAutozeroState has changed from returning an INT value to return a bertec_AutozeroStates enum.
+   </li>
+</ul>
+
+<ul>
+   Changes since October 26, 2017 to May 19, 2018 - build 599:
+   <li>
+      The SDK now has the ability to compute the subject's Center of Gravity and Sway Angle if the subject's height in MM is provided as
+      optional computed channels. This is exposed via the bertec_SetComputedChannelsFlags function.
+   </li>
+   <li>
+      The SDK now supports dual plate aggregation, where a pair of plates are "bonded" together to make one large surface.
+      This is exposed via the bertec_SetAggregateDeviceMode function. Using dual plates will affect the device count results.
+   </li>
+   <li>
+      Plate size and foot placement constants are now exposed as fixed ENUM values, covering all currently produces Bertec force plate/balance plate sizes.
+   </li>
+   <li>
+      Changed the addtionalData.timestamp value to always be 8x the device's timestamp
+      even when not running in ext clock mode. This makes the data format consistent between the two.
+      Updated the docs and samples to also make clear that using ext clock mode should also
+      require clearing the data buffer after changing it.
+   </li>
+   <li>
+      The SDK now handles a case where disconnecting and reconnecting the plate rapidly will return incorrect data.
+   </li>
+   <li>
+      Data reading should now start slightly faster and consume less cpu cycles.
+   </li>
+   <li>
+      The SDK now reports the data reading frequency which can be used as status or diagnostic information.
+   </li>
+</ul>
+
+<ul>
+   Changes since July 12, 2017 to October 26, 2017 - build 574:
+   <li>
+      The .NET wrapper was updated to support .NET "finalizers" which helps with using the SDK
+     from products such as LabView.
+   </li>
+   <li>
+      The documentation has been updated to clarify some usage points and expand on others.
+   </li>
+   <li>
+      The bertec_SetExternalClockMode was always returning an error result even if the command was
+     successful. bertec_SetExternalClockMode now returns UNSUPPORED_COMMAND if the hardware does
+     not support the desired clock mode and NOERROR on success.
+   </li>
+   <li>
+      The COMMAND_FAILED constant was renamed to UNSUPPORED_COMMAND to better match what the error
+     code actually means and how it is used.
+   </li>
+   <li>
+      If the external clock syncing feature is used and there is no sync pulse in over 3 seconds,
+     the API would assume that the device was unplugged and reset the connection. This check is
+     no longer done and instead only the presence of USB data on the wire is checked.
+   </li>
+</ul>
+
+<ul>
+   Changes since May 8, 2014 to July 12, 2017 - build 571:
+   <li>
+      The DLL has been updated to Version 2.0. This version changes the API interface
+      significantly, primarily to support external hardware synchronization and clocking.
+      Please consult both the PDF documentation and the bertecif.h header file prior to use.
+   </li>
+   <li>
+      In particular, the data callback function structure has changed and is
+      no longer a variable array but a fixed-size data structure.
+   </li>
+   <li>
+      The SDK will now attempt to load the FTD2XX.DLL at runtime and return an error if it cannot
+     locate it; this change should allow for your application to detect installation problems
+     and take the appropriate action.
+   </li>
+   <li>
+      The 64 bit version of the DLL no longer uses the _x64 suffix but instead can
+      be found in the x64 folder inside of the SDK. This pattern matches common
+      industry standards for 64-bit naming. Depending on your deployment you may need
+      to copy this dll your exe's folder or add it to your path.
+   </li>
+</ul>
+
+<ul>
+   Changes since March 24, 2014 to May 8, 2014 - build 420:
+   <li>DLL now supports the latest series of force plates and devices.</li>
+   <li>Updated to current FTDI chipset drivers.</li>
+</ul>
+
+<ul>
+   Changes since July 1, 2012 to March 24, 2014 - build 417:
+   <li>Added functionality to support re-ordering of plates.</li>
+   <li>Added functionality to allow thread priority changes.</li>
+   <li>Added 64-bit support.</li>
+   <li>Updated to current FTDI chipset drivers.</li>
+</ul>
+
+<ul>
+   Changes since March 28, 2012 to July 1, 2012 - build 352:
+   <li>Improved handling of dual synced plates.</li>
+   <li>Removed function to get current sync drift since this no longer applies.</li>
+   <li>Added functions to check if sync cable connected and resetting of sync values.</li>
+   <li>Added code to resolve problems with certain mixes of system USB ports, amplifiers, and devices.</li>
+   <li>Other minor improvements.</li>
+</ul>
+
+
+<ul>
+   Changes since August 23, 2010 to March 28, 2012 - build 310:
+   <li>Added advanced functionality to control USB thread priority.</li>
+   <li>Changes made to support control over the USB timeouts.</li>
+   <li>Now supports plates that have calibration matrixes that include + signs as part of the data.</li>
+   <li>Error logging in the %TEMP% folder now records more information which will assist in resolving device issues. </li>
+</ul>
+
+<ul>
+   Changes since October 28, 2009 to August 23, 2010 - build 300:
+   <li>Removed Get/SetAcquirePortReadRate.</li>
+   <li>Added ClearPollBuffer to discard current buffered data.</li>
+   <li>Added GetZeroLevelNoiseValue for advanced filtering.</li>
+   <li>Changed how multiple plates are handled to prevent "stalling" on some systems.</li>
+   <li>CoP channel now uses a threshold value for better results.</li>
+   <li>Better handling of USB errors.</li>
+   <li>Updated to current chipset drivers.</li>
+   <li>Improvements to data reading to reduce "lag" on slower systems, noticeably older laptops. </li>
+   <li>No longer initializes devices twice.</li>
+   <li>Syncing with more than one device now works properly</li>
+</ul>
+
+<ul>
+   Changes since October 8, 2009 to October 28, 2009 - build 200:
+   <li>Support for new firmware version that mitigates some USB port issues and data interference.</li>
+   <li>USB port reading speed has been improved, along with memory and resource management. </li>
+</ul>
+
+<ul>
+   Changes since July 20, 2009 to October 8, 2009 - build 194:
+   <li>Improved support for more than two synchronized plates, including diagnostic function to get current offset.</li>
+   <li>Flow control has been improved</li>
+   <li>Support for newest firmware and data checksum functionality.</li>
+   <li>Changes in calibration matrix now handled better.</li>
+   <li>Improved the startup response time, no longer inits the devices twice on first start.</li>
+   <li>New functionality: get last set buffer size.</li>
+   <li>New functionality: set and get the low-level read size for fine control of device latency.</li>
+   <li>New functionality: able to clear the poll buffer.</li>
+   <li>Added JAVA bindings and example code.</li>
+   <li>.NET support library updated with TransducerStatus and better event support. </li>
+   <li>Updated examples to be more clear and less redundant.</li>
+</ul>
+
+<ul>
+   Changes since February 11, 2009 to July 20, 2009 - build 183:
+   <li>Improved processor usage when no devices are connected.</li>
+   <li>Improved data sequence checking.</li>
+   <li>Improved the way fallbacks are done with regards to handling versions of the FTDI chipset. </li>
+   <li>Added support for more &quot;generic&quot; FTDI chipsets for wider range of device usage. </li>
+   <li>Added support for new firmware that allows for CRC checksum.</li>
+   <li>Devices are now always initialized on startup, instead of waiting for them.</li>
+   <li>Error logging is done to a %TEMP%\bertecdevicelog.txt file. </li>
+   <li>Multiple synchronized devices are now supported better. </li>
+   <li>Corrected handling of plates that report more channels than actually exist.</li>
+   <li>The USB controller now uses RTS/DTS flow control to improve latency on some systems. </li>
+</ul>
+<hr />
+<p>For further information, please contact us at <a href="https://bertec.com">bertec.com</a>. </p>
+</body>
+</html>
