@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/bertec_sdk_implementation.iml" filepath="$PROJECT_DIR$/bertec_sdk_implementation.iml" />
+      <module fileurl="file://$PROJECT_DIR$/android/bertec_sdk_implementation_android.iml" filepath="$PROJECT_DIR$/android/bertec_sdk_implementation_android.iml" />
+    </modules>
+  </component>
+</project>
