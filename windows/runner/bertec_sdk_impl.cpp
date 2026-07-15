@@ -50,6 +50,15 @@ constexpr float kInternalClockFrequencyHz = 1000.0f;
 constexpr float kSpikeLogThresholdN = 1000.f;
 constexpr ULONGLONG kSpikeLogCooldownMs = 500;
 
+// Force saturation / mechanical-overload guard.
+// The plate does not stream Fx/Fy/Fz directly: the SDK computes them as (calibration matrix) x
+// (raw signed-16-bit gauge counts). When a gauge rails under a sharp overload, the matrix maps it
+// into very large values on the derived channels (Fx/Mx/My/Mz especially). A derived force in the
+// tens of thousands of N therefore cannot be real; such samples are held at the last valid reading
+// instead of being graphed or recorded. Set this just ABOVE the plate's rated Fx/Fy/Fz capacity
+// (FP5060-06-PT-5000 is a few kN); real data never approaches it.
+constexpr float kSaturationForceThresholdN = 10000.f;
+
 struct DeviceChannelMap {
   int fx = -1;
   int fy = -1;
@@ -205,11 +214,21 @@ void EnsureRawSdkStream(bertec_Handle handle) {
       lowpass_result, average_result);
 }
 
-void EnableAutozero(bertec_Handle handle) {
+// bertec_SetEnableAutozero(handle, 1) ENABLES the SDK's continuous auto-zero; 0 DISABLES it.
+// (The prior EnableAutozero() passed 0 unconditionally, i.e. it DISABLED auto-zero, while its
+// name and its log line both claimed it was enabling it.)
+//
+// XO-NANO deliberately keeps continuous auto-zero DISABLED. The SDK re-zero is gated on Fz < 40 N
+// only, but when it fires it captures and then subtracts ALL channels. During sudden movements
+// where the plate is vertically light (Fz < 40 N) while shear/moments are large -- or while a
+// gauge is railed and therefore flat -- it can fold that load into the baseline and subtract it
+// thereafter, producing a large sustained offset on Fx/Mx/My/Mz. We instead zero once, explicitly,
+// via ManualZeroPlates() when the plate is known unloaded and settled.
+void SetAutozeroEnabled(bertec_Handle handle, bool enabled) {
   if (handle == nullptr) {
     return;
   }
-  const int result = bertec_SetEnableAutozero(handle, 0);
+  const int result = bertec_SetEnableAutozero(handle, enabled ? 1 : 0);
   if (result != BERTEC_NOERROR) {
     LogBertecStatusError(result, "SetEnableAutozero");
   }
@@ -229,7 +248,7 @@ bool ManualZeroPlates(bertec_Handle handle) {
   for (int iteration = 0; iteration < kMaxWaitIterations; ++iteration) {
     const bertec_AutozeroStates state = bertec_GetAutozeroState(handle);
     if (state == AUTOZEROSTATE_ZEROFOUND) {
-      EnableAutozero(handle);
+      SetAutozeroEnabled(handle, false);  // one-shot zero only; no continuous re-zero
       LogBertecDebug("Manual zero complete");
       return true;
     }
@@ -237,7 +256,7 @@ bool ManualZeroPlates(bertec_Handle handle) {
   }
 
   LogBertecDebug("Manual zero timed out waiting for AUTOZEROSTATE_ZEROFOUND");
-  EnableAutozero(handle);
+  SetAutozeroEnabled(handle, false);
   return false;
 }
 
@@ -334,21 +353,6 @@ PlateChannelValues ReadPlateChannels(const bertec_DeviceData& device_data,
     values.mz = device_data.channelData.data[channels.mz];
   }
   return values;
-}
-
-PlateSample ReadPlateForces(int device_number,
-                            const bertec_DeviceData& device_data,
-                            const DeviceChannelMap& channels) {
-  const PlateChannelValues values = ReadPlateChannels(device_data, channels);
-  PlateSample sample;
-  sample.device_index = device_number;
-  sample.valid = true;
-  sample.fx = values.fx;
-  sample.fy = values.fy;
-  sample.fz = values.fz;
-  sample.timestamp_ms =
-      static_cast<int64_t>(device_data.additionalData.timestamp);
-  return sample;
 }
 
 void WriteBertecRecordingColumnHeader(std::ostream& out, int plate_count) {
@@ -634,7 +638,7 @@ class WindowsBertecHandler {
     DiscoverChannels(handle);
     LogDeviceInfo(handle, device_count_);
     LogStreamStartDiagnostics(handle);
-    EnsureAutozeroEnabledLogged(handle, "stream start");
+    EnsureAutozeroDisabledLogged(handle, "stream start");
     LogDeviceChannelMaps(handle);
 
     {
@@ -812,23 +816,26 @@ class WindowsBertecHandler {
     diag_file_path_.clear();
   }
 
-  void EnsureAutozeroEnabledLogged(bertec_Handle handle, const char* reason) {
+  // XO-NANO runs with the SDK's continuous auto-zero DISABLED (see SetAutozeroEnabled for why:
+  // its Fz-gated re-zero can capture a shear/moment load as the baseline during dynamic movements).
+  // This ensures it is off at stream start and records the actual state to the diagnostic log.
+  void EnsureAutozeroDisabledLogged(bertec_Handle handle, const char* reason) {
     if (handle == nullptr) {
       return;
     }
     const int was_enabled = bertec_GetEnableAutozero(handle);
-    EnableAutozero(handle);
+    SetAutozeroEnabled(handle, false);
     LogBertecDebugFormatted(
-        "Autozero enabled (%s); enable=%d state=%d", reason,
+        "Continuous autozero disabled (%s); enable=%d state=%d", reason,
         bertec_GetEnableAutozero(handle),
         static_cast<int>(bertec_GetAutozeroState(handle)));
 
-    if (was_enabled != 0) {
-      return;
+    if (was_enabled == 0) {
+      return;  // already disabled; nothing changed
     }
 
     DiagLogEntry entry;
-    entry.event_type = "autozero_enabled";
+    entry.event_type = "autozero_disabled";
     entry.autozero_enable = bertec_GetEnableAutozero(handle);
     entry.autozero_state =
         static_cast<int>(bertec_GetAutozeroState(handle));
@@ -1041,6 +1048,76 @@ class WindowsBertecHandler {
     AppendDiagLogEntry(entry);
   }
 
+  // Returns one device's channel values, but if any derived force exceeds the plate's rated range
+  // (a raw gauge railed under overload), substitutes the last valid values so the artifact is
+  // neither displayed nor recorded. Logs each saturation episode to the diagnostic CSV.
+  // Called exactly once per device per frame from OnDataFrame.
+  PlateChannelValues GuardChannels(int device_index,
+                                   const bertec_DeviceData& device_data,
+                                   const DeviceChannelMap& channels) {
+    PlateChannelValues values = ReadPlateChannels(device_data, channels);
+    if (device_index < 0 || device_index >= kMaxDevices) {
+      return values;
+    }
+    const bool saturated =
+        std::fabs(values.fx) > kSaturationForceThresholdN ||
+        std::fabs(values.fy) > kSaturationForceThresholdN ||
+        std::fabs(values.fz) > kSaturationForceThresholdN;
+    if (saturated) {
+      LogSaturationEvent(device_index, device_data, values);
+      if (has_last_valid_channels_[device_index]) {
+        return last_valid_channels_[device_index];  // hold last good sample
+      }
+      return values;  // no history yet; pass through
+    }
+    last_valid_channels_[device_index] = values;
+    has_last_valid_channels_[device_index] = true;
+    return values;
+  }
+
+  void LogSaturationEvent(int device_index, const bertec_DeviceData& device_data,
+                          const PlateChannelValues& values) {
+    if (device_index < 0 || device_index >= kMaxDevices) {
+      return;
+    }
+    const ULONGLONG now_ms = GetTickCount64();
+    if (now_ms - last_saturation_log_ms_[device_index] < kSpikeLogCooldownMs) {
+      return;
+    }
+    last_saturation_log_ms_[device_index] = now_ms;
+
+    std::string serial;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      if (device_index < device_count_) {
+        serial = device_serials_[device_index];
+      }
+    }
+
+    const auto& additional = device_data.additionalData;
+    LogBertecDebugFormatted(
+        "SATURATION device=%d serial=%s ts=%llu frame=%llu FX=%.1f FY=%.1f FZ=%.1f "
+        "(exceeds +/-%.0f N -> holding last valid sample)",
+        device_index, serial.c_str(),
+        static_cast<unsigned long long>(additional.timestamp),
+        static_cast<unsigned long long>(additional.frameCounter),
+        values.fx, values.fy, values.fz, kSaturationForceThresholdN);
+
+    DiagLogEntry entry;
+    entry.event_type = "saturation";
+    entry.device_index = device_index;
+    entry.serial = serial.c_str();
+    entry.additional = &additional;
+    entry.fx = values.fx;
+    entry.fy = values.fy;
+    entry.fz = values.fz;
+    entry.mx = values.mx;
+    entry.my = values.my;
+    entry.mz = values.mz;
+    entry.detail = "overload/gauge-saturation; last valid sample substituted";
+    AppendDiagLogEntry(entry);
+  }
+
   void OnDataFrame(bertec_Handle handle, const bertec_DataFrame* data_frame) {
     if (!devices_ready_.load()) {
       return;
@@ -1073,8 +1150,19 @@ class WindowsBertecHandler {
         return;
       }
 
-      PlateSample sample = ReadPlateForces(device_number, device_data,
-                                           local_channels[device_number]);
+      const PlateChannelValues values =
+          GuardChannels(device_number, device_data, local_channels[device_number]);
+      if (device_number < kMaxDevices) {
+        frame_channels_[device_number] = values;  // reused by AppendRecordingFrame
+      }
+      PlateSample sample;
+      sample.device_index = device_number;
+      sample.valid = true;
+      sample.fx = values.fx;
+      sample.fy = values.fy;
+      sample.fz = values.fz;
+      sample.timestamp_ms =
+          static_cast<int64_t>(device_data.additionalData.timestamp);
       MaybeLogCalibrationTransition(handle, device_number, device_data, sample);
       MaybeLogForceSpike(handle, device_number, device_data,
                          local_channels[device_number], sample);
@@ -1119,20 +1207,12 @@ class WindowsBertecHandler {
 
     for (int plate_index = 0; plate_index < recording_device_count_;
          ++plate_index) {
+      // Use the saturation-guarded values computed for this frame in OnDataFrame, so the
+      // recording holds the last valid sample instead of an overload artifact. OnDataFrame
+      // runs the guard for every device before calling AppendRecordingFrame.
       PlateChannelValues values;
-      if (plate_index < data_frame->deviceCount) {
-        const bertec_DeviceData& device_data =
-            data_frame->device[plate_index];
-        if (device_data.channelData.count > 0) {
-          DeviceChannelMap channels;
-          {
-            std::lock_guard<std::mutex> state_lock(state_mutex_);
-            if (plate_index < device_count_) {
-              channels = device_channels_[plate_index];
-            }
-          }
-          values = ReadPlateChannels(device_data, channels);
-        }
+      if (plate_index < kMaxDevices) {
+        values = frame_channels_[plate_index];
       }
 
       recording_stream_ << ',' << values.fx << ',' << values.fy << ','
@@ -1580,6 +1660,12 @@ class WindowsBertecHandler {
   float last_sample_fy_[kMaxDevices] = {};
   float last_sample_fz_[kMaxDevices] = {};
   bool has_last_sample_[kMaxDevices] = {};
+
+  // Saturation / overload guard state (see GuardChannels / kSaturationForceThresholdN).
+  PlateChannelValues last_valid_channels_[kMaxDevices] = {};
+  bool has_last_valid_channels_[kMaxDevices] = {};
+  PlateChannelValues frame_channels_[kMaxDevices] = {};
+  ULONGLONG last_saturation_log_ms_[kMaxDevices] = {};
 
   std::atomic<bool> recording_active_{false};
   std::mutex recording_mutex_;
